@@ -29,6 +29,7 @@
 #define PHYSAC_IMPLEMENTATION
 #include "extras/physac.h"
 
+
 /*******************************************************************************************
 *  TYPEDEF AND ENUMS
 ********************************************************************************************/
@@ -55,7 +56,7 @@ typedef enum
 { 
     LOGO = 0,
     TITLE,
-    LEVEL_1,
+    LEVEL,
     ENDING,
     POINTS_SCREEN,
 } GameScreen_e;
@@ -75,21 +76,35 @@ typedef struct main
    int total_points;
 }points_s;
 
+typedef struct
+{
+   int color;
+   int shoots;
+   int time;
+   int number_balls;
+   int speed;
+   int backbround;
+   float background_speed;
+}level_s;
+
 /*******************************************************************************************
 *  DEFINES 
 ********************************************************************************************/
+#define NUMER_OF_LEVELS       6
+
 #define MAX_NUM_BALLS        30
 #define MINUM_RADIO_BALL     30
+
 #define NUMER_OF_WALLS        4
-
 #define BACKGROUND_SPEED    0.1
-
-#define TOTAL_TIME        30.0
-#define TOTAL_SHOOTS        25
 
 #define POINT_PER_BALL      10
 #define POINT_PER_SHOOT     50
 #define POINT_PER_SECOND    20
+
+#define BALL_RED      2
+#define BALL_BLUE     1
+#define BALL_MAROON   0
 
 /*******************************************************************************************
 *  LOCAL VARIABLES 
@@ -97,30 +112,41 @@ typedef struct main
 ball_s balls[MAX_NUM_BALLS];
 wall_s walls[NUMER_OF_WALLS];
 
+level_s levels[NUMER_OF_LEVELS] =
+{  //     color    shoots   time   numer_balls  balls_speed  bkg  bkg_speed
+       {BALL_MAROON, 10,      30,         1,          10,     1,     0.1},
+       {BALL_BLUE,   10,      30,         1,          20,     1,     0.1},
+       {BALL_RED,    20,      30,         2,          10,     1,     0.1},
+       {BALL_MAROON, 20,      30,         2,          20,     1,     0.1},
+       {BALL_BLUE,   30,      30,         3,          20,     1,     0.1},
+       {BALL_RED,    30,      30,         3,          40,     1,     0.1},       
+
+};
 int num_balls = 0;
 points_s points  = {0};
 const int screenWidth = 800;
 const int screenHeight = 450;
 int destroyed_balls = 0;
 
-float remainging_time = TOTAL_TIME;
+float remainging_time = 0;
 float init_time = 0.0;
-int remaining_shoots = TOTAL_SHOOTS;
+int remaining_shoots = 0;
 int framesCounter = 0;
 GameScreen_e currentScreen = LOGO;
 level_result_e level_result = LOOSE;
 Vector2 mousePos;
 
 float background_pos = -300;
-int level = 1;
+int level = 0;
 
 
 /*******************************************************************************************
 *  LOCAL FUNCTIONS 
 ********************************************************************************************/
+bool any_active_ball(void);
 int getdistance(Vector2 p1, Vector2 p2);
 void new_ball(int radius, Vector2 speed, Vector2 position, int color);
-void new_random_ball(void);
+void new_random_ball(int newColor, int Speed);
 void createWalls(void);
 void destroyWalls(void);
 
@@ -164,7 +190,7 @@ int main(void)
     HideCursor();
   
     
-    SetPhysicsGravity(0.0,0.0);
+    //SetPhysicsGravity(0.0,0.0);
     
     SetTargetFPS(60);               // Set our game to run at 60 frames-per-second
 
@@ -201,9 +227,9 @@ int main(void)
                 }
     
                 num_balls = 0;
-                remainging_time = TOTAL_TIME;
+                remainging_time = levels[level].time;
                 init_time = 0.0;
-                remaining_shoots = TOTAL_SHOOTS;
+                remaining_shoots = levels[level].shoots;
                 background_pos = -300;
                 destroyed_balls = 0;
                 level_result = LOOSE;
@@ -212,21 +238,21 @@ int main(void)
                 if (IsKeyPressed(KEY_ENTER) || IsGestureDetected(GESTURE_TAP))
                 {
                     createWalls();
-
-                    new_random_ball();
-                    new_random_ball();
-                    new_random_ball();
+                    for (int i = 0; i < levels[level].number_balls; i++)
+                    {
+                        new_random_ball(levels[level].color, levels[level].speed);
+                    }
 
                     init_time = GetTime();
-                    currentScreen = LEVEL_1;
+                    currentScreen = LEVEL;
                 }
             } break;
-            case LEVEL_1:
+            case LEVEL:
             {
                 
                 UpdatePhysics();
                 float actual_time = GetTime();
-                remainging_time = TOTAL_TIME - (actual_time - init_time);
+                remainging_time = levels[level].time - (actual_time - init_time);
  
                 mousePos = GetMousePosition();
                 if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) 
@@ -245,10 +271,10 @@ int main(void)
                        
                                 if ((num_balls < (MAX_NUM_BALLS + 1)) && ( balls[i].radius >= MINUM_RADIO_BALL))
                                 {
-                                    Vector2 newSpeed = (Vector2){-balls[i].body->velocity.x*2,-balls[i].body->velocity.y*2};
+                                    Vector2 newSpeed = (Vector2){-balls[i].body->velocity.x*5,-balls[i].body->velocity.y*5};
                                     new_ball(balls[i].radius/2, newSpeed, balls[i].body->position,balls[i].color);
                             
-                                    newSpeed = (Vector2){balls[i].body->velocity.x*2,balls[i].body->velocity.y*2};
+                                    newSpeed = (Vector2){balls[i].body->velocity.x*5,balls[i].body->velocity.y*5};
                                     new_ball(balls[i].radius/2, newSpeed, balls[i].body->position, balls[i].color);
                                 }
                                 else if ((num_balls < (MAX_NUM_BALLS)) && ( balls[i].radius >= MINUM_RADIO_BALL))
@@ -274,8 +300,8 @@ int main(void)
                 }     
 
 
-                // 
-                if ((remainging_time <=0) || (remaining_shoots == 0) || (destroyed_balls >= 21))
+
+                if ((remainging_time <=0) || (remaining_shoots == 0) || (any_active_ball() == false))
                 {
                     currentScreen = ENDING;
                     destroyWalls();
@@ -283,7 +309,7 @@ int main(void)
             } break;
             case ENDING:
             {
-                if(destroyed_balls < 21)
+                if(any_active_ball() == true)
                 {
                     level_result = LOOSE;
                 }
@@ -295,18 +321,27 @@ int main(void)
                 // Press enter to return to TITLE screen
                 if (IsKeyPressed(KEY_ENTER) || IsGestureDetected(GESTURE_TAP))
                 {
-                    if(destroyed_balls < 21)
+                    if(any_active_ball() == true)
                        {
                            level_result = LOOSE;
                            currentScreen = TITLE;
                            memset(&points, 0, sizeof(points));
-                           level = 1;
+                           level = 0;
                        }
                        else
                        {
                            level_result = WIN;
-                           currentScreen = POINTS_SCREEN;
-                           level+=1;
+                           
+                           if (level < NUMER_OF_LEVELS)
+                           {
+                               currentScreen = POINTS_SCREEN;
+                               level+=1;
+                           }
+                           else
+                           {
+                               currentScreen = LOGO;
+                               level = 0;
+                           }
                            framesCounter = 0;
                        } 
                 }
@@ -360,12 +395,12 @@ int main(void)
 
 
                 } break;
-                case LEVEL_1:
+                case LEVEL:
                 {
                    // Draw background
                     float scale_landscape = 2*(float)screenWidth / (float)landscape.width ;
                     DrawTextureEx(landscape, (Vector2){background_pos,-300}, 0.0, scale_landscape, LIGHTGRAY);
-                    background_pos +=BACKGROUND_SPEED;
+                    background_pos +=levels[level].background_speed;
 
 
                     // Draw balls
@@ -414,7 +449,7 @@ int main(void)
 
 
                     // Draw level
-                    DrawTextEx(ArcadeFont,TextFormat("Level %2i", level),(Vector2){40,20},20,1, ORANGE);
+                    DrawTextEx(ArcadeFont,TextFormat("Level %2i", level+1),(Vector2){40,20},20,1, ORANGE);
                     
                     // Draw points
                     DrawTextEx(ArcadeFont,TextFormat("Points %2i", points.total_points),(Vector2){40,40},20,1, ORANGE);
@@ -456,11 +491,11 @@ int main(void)
  
                     DrawRectangle(0, 0, screenWidth, screenHeight, SKYBLUE); 
                     DrawTextEx(ArcadeFont,"POINTS",(Vector2){300,60},40,1, MAROON);
-                    DrawTextEx(ArcadeFont,TextFormat("%4i", points.points_balls),(Vector2){450,140},20,1, MAROON);
-                    DrawTextEx(ArcadeFont,TextFormat("%4i", points.points_per_shoot),(Vector2){450,180},20,1, MAROON);
-                    DrawTextEx(ArcadeFont,TextFormat("%4i", points.points_per_time),(Vector2){450,220},20,1, MAROON);
-                    DrawTextEx(ArcadeFont,"-----------",(Vector2){300,260},20,1, MAROON);
-                    DrawTextEx(ArcadeFont,TextFormat("%4i", points.points_level),(Vector2){450,300},20,1, MAROON);
+                    DrawTextEx(ArcadeFont,TextFormat(" Balls destroyed: %4i", points.points_balls),(Vector2){200,140},20,1, MAROON);
+                    DrawTextEx(ArcadeFont,TextFormat("Remaining shoots: %4i", points.points_per_shoot),(Vector2){200,180},20,1, MAROON);
+                    DrawTextEx(ArcadeFont,TextFormat("  Remainint time: %4i", points.points_per_time),(Vector2){200,220},20,1, MAROON);
+                    DrawTextEx(ArcadeFont,"-----------------------",(Vector2){200,260},20,1, MAROON);
+                    DrawTextEx(ArcadeFont,TextFormat("           Total: %4i", points.points_level),(Vector2){200,300},20,1, MAROON);
                     
                     DrawTextEx(ArcadeFont,"PRESS ENTER to continue...",(Vector2){300, 340},10,1, MAROON);
 
@@ -487,6 +522,25 @@ int main(void)
 
 /*******************************************************************************************
 *
+*  any_active_ball
+* 
+********************************************************************************************/
+bool any_active_ball(void)
+{
+    bool result = false;
+    for (int i = 0; i < MAX_NUM_BALLS; i++)
+    {
+        if (balls[i].enable == true)
+        {
+            result = true;
+            break;
+        }
+    }
+    return result;
+}
+
+/*******************************************************************************************
+*
 *  getdistance
 * 
 ********************************************************************************************/
@@ -501,12 +555,11 @@ int getdistance(Vector2 p1, Vector2 p2)
 *  new_random_ball
 * 
 ********************************************************************************************/
-void new_random_ball(void)
+void new_random_ball(int newColor, int Speed)
 {
     Vector2 newPos=(Vector2){GetRandomValue(screenWidth*0.2, screenWidth*0.8), GetRandomValue(screenHeight*0.2, screenHeight*0.8) };
-    int newColor=GetRandomValue(0,2);
-    int newRadious= GetRandomValue(70, 90);
-    Vector2 newSpeed = (Vector2){0.01*GetRandomValue(10, 100),0.01*GetRandomValue(10, 100)};
+    int newRadious= GetRandomValue(60, 110);
+    Vector2 newSpeed = (Vector2){0.01*GetRandomValue(5, 15)*Speed, 0.01*GetRandomValue(5, 15)*Speed};
 
     new_ball(newRadious, newSpeed, newPos, newColor);
 }
@@ -521,9 +574,12 @@ void new_ball(int radius, Vector2 speed, Vector2 position, int color)
     if (num_balls < MAX_NUM_BALLS)
     {
         balls[num_balls].radius = radius;
-        balls[num_balls].body = CreatePhysicsBodyCircle(position, balls[num_balls].radius, 10);
+        balls[num_balls].body = CreatePhysicsBodyCircle(position, balls[num_balls].radius, 100);
         balls[num_balls].body->restitution = 1;
-        balls[num_balls].body->useGravity = true;
+        balls[num_balls].body->staticFriction = 1.0f;
+        balls[num_balls].body->dynamicFriction = 1.0f;
+        balls[num_balls].body->useGravity = false;
+        balls[num_balls].body->mass = 10000000;
         balls[num_balls].explosion_timer = 0;
         balls[num_balls].final_position =(Vector2){0.0, 0.0};
         balls[num_balls].enable = true;
@@ -545,8 +601,11 @@ void createWalls(void)
     walls[0].posY = screenHeight - 1;
     walls[0].width = screenWidth;
     walls[0].height = 1;
-    walls[0].body = CreatePhysicsBodyRectangle((Vector2){screenWidth/2.0f, (float)screenHeight}, (float)screenWidth, 1, 10);
+    walls[0].body = CreatePhysicsBodyRectangle((Vector2){screenWidth/2.0f, (float)screenHeight}, (float)screenWidth, 1, 100);
     walls[0].body->restitution = 1;
+    walls[0].body->staticFriction = 1.0f;
+    walls[0].body->dynamicFriction = 1.0f;
+    walls[0].body->useGravity = false;
     walls[0].body->enabled = false; // Disable body state to convert it to static (no dynamics, but collisions)
 
     // ceiling
@@ -554,8 +613,11 @@ void createWalls(void)
     walls[1].posY = 0;
     walls[1].width = screenWidth;
     walls[1].height = 1;
-    walls[1].body = CreatePhysicsBodyRectangle((Vector2){screenWidth/2.0f, 0}, (float)screenWidth, 1, 10);
+    walls[1].body = CreatePhysicsBodyRectangle((Vector2){screenWidth/2.0f, 0}, (float)screenWidth, 1, 100);
     walls[1].body->restitution = 1;
+    walls[1].body->staticFriction = 1.0f;
+    walls[1].body->dynamicFriction = 1.0f;
+    walls[1].body->useGravity = false;
     walls[1].body->enabled = false; // Disable body state to convert it to static (no dynamics, but collisions)
 
     //left wall
@@ -563,8 +625,11 @@ void createWalls(void)
     walls[2].posY = 0;
     walls[2].width = 1;
     walls[2].height = screenHeight;
-    walls[2].body = CreatePhysicsBodyRectangle((Vector2){0, screenHeight/2.0f}, 1, screenHeight, 10);
+    walls[2].body = CreatePhysicsBodyRectangle((Vector2){0, screenHeight/2.0f}, 1, screenHeight, 100);
     walls[2].body->restitution = 1;
+    walls[2].body->staticFriction = 1.0f;
+    walls[2].body->dynamicFriction = 1.0f;
+    walls[2].body->useGravity = false;
     walls[2].body->enabled = false; // Disable body state to convert it to static (no dynamics, but collisions)
 
     // right wall
@@ -572,8 +637,11 @@ void createWalls(void)
     walls[3].posY = 0;
     walls[3].width = 1;
     walls[3].height = screenHeight;
-    walls[3].body = CreatePhysicsBodyRectangle((Vector2){(float)screenWidth, screenHeight/2.0f}, 1, screenHeight, 10);
+    walls[3].body = CreatePhysicsBodyRectangle((Vector2){(float)screenWidth, screenHeight/2.0f}, 1, screenHeight, 100);
     walls[3].body->restitution = 1;
+    walls[3].body->staticFriction = 1.0f;
+    walls[3].body->dynamicFriction = 1.0f;
+    walls[3].body->useGravity = false;
     walls[3].body->enabled = false; // Disable body state to convert it to static (no dynamics, but collisions)
 
 }
