@@ -10,6 +10,8 @@
 	},
 	"files.associations": {
 		"raylib.h": "c",
-		"physac.h": "c"
+		"physac.h": "c",
+		"math.h": "c",
+		"random": "c"
 	}
 }
